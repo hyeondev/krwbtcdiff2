@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>업비트 거래 시스템</title>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <h1>업비트 자동 매매 시스템</h1>
+  <div>
+    <h2>총 보유 자산</h2>
+    <div id="balances">로딩 중...</div>
+  </div>
+  <div>
+    <h2>총 수익: <span id="total-profit">0</span> 원</h2>
+  </div>
+  <div>
+    <h2>거래 상태: <span id="trading-status">중지됨</span></h2>
+    <button id="start-trading">거래 시작</button>
+    <button id="stop-trading" disabled>거래 중지</button>
+  </div>
+  <div>
+    <h2>거래 내역</h2>
+    <h3>완료된 거래</h3>
+    <ul id="completed"></ul>
+  </div>
+
+  <script>
+    const socket = io();
+
+    // 거래 상태 업데이트
+    socket.on("tradingStatus", (status) => {
+      document.getElementById("trading-status").innerText = status ? "진행 중" : "중지됨";
+      document.getElementById("start-trading").disabled = status;
+      document.getElementById("stop-trading").disabled = !status;
+    });
+
+    // 총 수익 업데이트
+    socket.on("profitUpdate", (profit) => {
+      document.getElementById("total-profit").innerText = profit.toFixed(2);
+    });
+
+    // 완료된 거래 업데이트
+    socket.on("tradeCompleted", (completed) => {
+      const list = document.getElementById("completed");
+      list.innerHTML = completed
+        .map(
+          (trade) =>
+            `<li>${trade.time} - ${trade.market}: 수익 ${trade.profit.toFixed(2)}원</li>`
+        )
+        .join("");
+    });
+
+    // 잔고 업데이트
+    socket.on("balances", (balances) => {
+      const balanceList = balances.map(
+        (b) => `${b.currency}: ${b.balance} (${b.avg_buy_price ? "평균 매수가: " + b.avg_buy_price : ""})`
+      );
+      document.getElementById("balances").innerText = balanceList.join(", ");
+    });
+
+    // 거래 시작/중지 버튼
+    document.getElementById("start-trading").addEventListener("click", () => {
+      socket.emit("startTrading");
+      document.getElementById("start-trading").disabled = true;
+      document.getElementById("stop-trading").disabled = false;
+    });
+
+    document.getElementById("stop-trading").addEventListener("click", () => {
+      socket.emit("stopTrading");
+      document.getElementById("start-trading").disabled = false;
+      document.getElementById("stop-trading").disabled = true;
+    });
+  </script>
+</body>
+</html>

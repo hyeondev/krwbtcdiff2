@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>차익 거래 모니터링</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #f4f4f4;
+    }
+  </style>
+</head>
+<body>
+  <h1>업비트 차익 거래 모니터링</h1>
+  <h2>실행된 거래 내역</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>시간</th>
+        <th>코인</th>
+        <th>KRW 가격</th>
+        <th>BTC 환산 가격</th>
+        <th>거래</th>
+        <th>수익률 (%)</th>
+      </tr>
+    </thead>
+    <tbody id="trade-table">
+      <!-- 거래 내역 데이터가 추가됩니다 -->
+    </tbody>
+  </table>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const tableBody = document.getElementById("trade-table");
+
+    socket.on("trade", (data) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${data.time}</td>
+        <td>${data.coin}</td>
+        <td>${data.krwPrice.toLocaleString()} KRW</td>
+        <td>${data.btcPrice.toLocaleString()} KRW</td>
+        <td>${data.action}</td>
+        <td>${data.profit.toFixed(2)} %</td>
+      `;
+      tableBody.appendChild(row);
+    });
+  </script>
+</body>
+</html>
