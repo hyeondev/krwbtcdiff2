@@ -42,10 +42,10 @@ function adjustDynamicDelay(remainingReq) {
 }
 
 // 모든 코인 마켓 가져오기
-function getAllMarkets() {
+async function getAllMarkets() {
   try {
-    const response = fetchJSON(config.baseUrl + "/market/all");
-    return response.data;
+    const data = await fetchJSON(config.baseUrl + "/market/all");
+    return data;
   } catch (error) {
     console.error("Error fetching market list:", error.message);
     return [];

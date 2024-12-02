@@ -80,6 +80,26 @@ async function getAccountInfo() {
     }
 }
 
+function monitorCoinPrices(onPriceUpdate) {
+    const ws = new WebSocket("wss://api.upbit.com/websocket/v1");
+
+    ws.on("open", () => {
+        console.log("WebSocket connected.");
+        ws.send(JSON.stringify([
+            { ticket: "unique-ticket-id" },
+            { type: "ticker", codes: ["KRW-BTC", "KRW-ETH"] },
+        ]));
+    });
+
+    ws.on("message", (data) => {
+        const parsed = JSON.parse(data);
+        onPriceUpdate(parsed);
+    });
+
+    ws.on("close", () => console.log("WebSocket closed."));
+    ws.on("error", (err) => console.error("WebSocket error:", err.message));
+}
+
 module.exports = {
     getAccountInfo
 };

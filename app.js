@@ -1,8 +1,8 @@
 const express = require("express");
 const { Server } = require("socket.io");
 const http = require("http");
-const { getAccountInfo } = require("./services/exchangeApi");
-const upbitApi = require("./services/upbitApi");
+const { getAccountInfo } = require("./services/websocket");
+const CoinManager = require("./services/coinManager");
 //const { monitorCoinPrice } = require("./services/websocket");
 const config = require('./config/config');
 
@@ -55,3 +55,20 @@ server.on("error", (err) => {
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+(async () => {
+  const coinManager = new CoinManager();
+
+  // 초기화: 코인 데이터 로드
+  await coinManager.initializeCoins();
+
+  // 모든 코인 정보 출력
+  coinManager.printCoins();
+
+  // 코인 목록 업데이트
+  setInterval(async () => {
+      console.log("Updating coin list...");
+      await coinManager.updateCoins();
+      coinManager.printCoins();
+  }, 60000); // 1분마다 업데이트
+})();
