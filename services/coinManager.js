@@ -65,6 +65,31 @@ class CoinManager {
             //console.log(`Market: ${coin.market}, Name: ${coin.koreanName} (${coin.englishName})`);
         });
     }
+
+    // Ticker 업데이트
+    updateTicker(market, tickerData) {
+        const coin = this.coins.find((c) => c.market === market);
+        if (coin) {
+            coin.updateTicker(tickerData);
+        }
+    }
+
+    // Trade 업데이트
+    updateTrade(market, tradeData) {
+        const coin = this.coins.find((c) => c.market === market);
+        if (coin) {
+            coin.updateTrade(tradeData);
+        }
+        console.log(tradeData);
+    }
+
+    // Orderbook 업데이트
+    updateOrderbook(market, orderbookData) {
+        const coin = this.coins.find((c) => c.market === market);
+        if (coin) {
+            coin.updateOrderbook(orderbookData);
+        }
+    }
 }
 
 module.exports = CoinManager;

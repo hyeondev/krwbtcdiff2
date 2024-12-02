@@ -77,16 +77,24 @@ server.listen(PORT, () => {
 
   // 메시지 타입별 이벤트 핸들러 등록
   wsManager.addEventHandler("ticker", (data) => {
+    coinManager.updateTicker(data.code, data);
       //console.log(`Ticker Update: ${data.code} - ${data.trade_price}`);
   });
 
   wsManager.addEventHandler("trade", (data) => {
+    coinManager.updateTrade(data.code, data);
       // console.log(`Trade Update: ${data.code} - ${data.trade_price} @ ${data.trade_volume}`);
   });
 
-  wsManager.addEventHandler("order", (data) => {
-    console.log("order");
-      // console.log(`Order Update: ${data.code} - ${data.order_type} ${data.price}`);
+  wsManager.addEventHandler("orderbook", (data) => {
+    coinManager.updateOrderbook(data.code, data);
+    // console.log(`Order Update: ${data.code} - ${data.timestamp}`);
+    // console.table(data.orderbook_units.map(unit => ({
+    //   "Ask Price (매도가격)": unit.ask_price,
+    //   "Ask Size (매도량)": unit.ask_size,
+    //   "Bid Price (매수가격)": unit.bid_price,
+    //   "Bid Size (매수량)": unit.bid_size,
+    // })));
   });
 
   // Ticker 데이터 구독 추가
@@ -103,8 +111,8 @@ server.listen(PORT, () => {
 
   // Order 데이터 구독 추가
   // wsManager.addSubscription(
-  //     "order",
-  //     coinManager.coins.map((coin) => coin.market) // 모든 코인 구독
+  //     "orderbook",
+  //     coinManager.coins.map((coin) => `${coin.market}.1`) // 모든 코인 구독
   // );
 
   // WebSocket 연결 시작

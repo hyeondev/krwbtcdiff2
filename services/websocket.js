@@ -58,7 +58,7 @@ class WebSocketManager {
         ]);
 
         this.ws.send(subscriptionRequest);
-        console.log("Subscribed to markets:", this.subscriptions);
+        //console.log("Subscribed to markets:", this.subscriptions);
     }
 
     // 구독 항목 추가
