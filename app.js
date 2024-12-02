@@ -12,6 +12,10 @@ const io = new Server(server);
 
 const PORT = 8000;
 
+// WebSocketManager 초기화
+const wsManager = new WebSocketManager();
+const tickerPrices = {}; // Ticker 데이터를 저장할 객체
+
 // 정적 파일 제공
 app.use(express.static("public"));
 
@@ -28,7 +32,23 @@ io.on("connection", (socket) => {
   // 3초마다 자산 정보 전송
   const accountInterval = setInterval(async () => {
     const accountData = await getAccountInfo();
-    socket.emit("accountUpdate", accountData); // "accountUpdate" 이벤트로 데이터 전송
+    const enrichedData = accountData.map((asset) => {
+      const market = `KRW-${asset.currency}`; // 업비트 마켓 코드
+      const currentPrice = tickerPrices[market] || 0; // 현재가 가져오기
+      const evaluation = asset.balance * currentPrice; // 평가 금액 계산
+      //console.log(market + ' : ' + evaluation + 'currentPrice: ' + currentPrice);
+      return {
+        ...asset,
+        currentPrice,
+        evaluation,
+      };
+    });
+
+    const totalValue = enrichedData.reduce((acc, asset) => acc + asset.evaluation, 0);
+
+    // console.log(totalValue);
+
+    socket.emit("accountUpdate", { totalValue, assets: enrichedData }); // 클라이언트로 데이터 전송
   }, config.accountUpdateDelay);
 
   // WebSocket을 통한 코인 가격 모니터링
@@ -70,10 +90,7 @@ server.listen(PORT, () => {
   if (!Array.isArray(coinManager.coins) || coinManager.coins.length === 0) {
     console.error("CoinManager.coins is not initialized or empty.");
     return;
-}
-
-  // WebSocketManager 초기화
-  const wsManager = new WebSocketManager();
+  }
 
   // 메시지 타입별 이벤트 핸들러 등록
   wsManager.addEventHandler("ticker", (data) => {
@@ -88,13 +105,13 @@ server.listen(PORT, () => {
 
   wsManager.addEventHandler("orderbook", (data) => {
     coinManager.updateOrderbook(data.code, data);
-    // console.log(`Order Update: ${data.code} - ${data.timestamp}`);
     // console.table(data.orderbook_units.map(unit => ({
     //   "Ask Price (매도가격)": unit.ask_price,
     //   "Ask Size (매도량)": unit.ask_size,
     //   "Bid Price (매수가격)": unit.bid_price,
     //   "Bid Size (매수량)": unit.bid_size,
     // })));
+      // console.log(`Order Update: ${data.code} - ${data.order_type} ${data.price}`);
   });
 
   // Ticker 데이터 구독 추가
@@ -110,10 +127,25 @@ server.listen(PORT, () => {
   );
 
   // Order 데이터 구독 추가
-  // wsManager.addSubscription(
-  //     "orderbook",
-  //     coinManager.coins.map((coin) => `${coin.market}.1`) // 모든 코인 구독
-  // );
+  wsManager.addSubscription(
+      "orderbook",
+      coinManager.coins.map((coin) => `${coin.market}.1`) // 모든 코인 구독
+  );
+
+  setInterval(() => {
+    const priceDifferences = coinManager.checkPriceDifferencesForAllCoins();
+    console.log("가격 차이 계산 완료.");
+    priceDifferences.forEach((result) => {
+        // console.log(
+        //     `[${result.coin}] BTC 마켓 매도 최저가: ${result.btcBestAskPrice} BTC, ` +
+        //     `KRW 마켓 매수 최고가: ${result.krwBestBidPrice} KRW, 차이: ${result.diff1}%`
+        // );
+        // console.log(
+        //     `[${result.coin}] KRW 마켓 매도 최저가: ${result.krwBestAskPrice} KRW, ` +
+        //     `BTC 마켓 매수 최고가: ${result.btcBestBidPrice} BTC, 차이: ${result.diff2}%`
+        // );
+    });
+}, 2000);
 
   // WebSocket 연결 시작
   wsManager.startConnection();
