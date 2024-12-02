@@ -1,9 +1,9 @@
 const express = require("express");
 const { Server } = require("socket.io");
 const http = require("http");
-const { getAccountInfo } = require("./services/websocket");
 const CoinManager = require("./services/coinManager");
-//const { monitorCoinPrice } = require("./services/websocket");
+const WebSocketManager = require("./services/websocket");
+const { getAccountInfo } = require("./services/upbitApi");
 const config = require('./config/config');
 
 const app = express();
@@ -57,18 +57,56 @@ server.listen(PORT, () => {
 });
 
 (async () => {
+  // 코인 데이터 초기화
   const coinManager = new CoinManager();
-
-  // 초기화: 코인 데이터 로드
   await coinManager.initializeCoins();
-
-  // 모든 코인 정보 출력
-  coinManager.printCoins();
-
-  // 코인 목록 업데이트
+  // 1분마다 코인 목록 업데이트
   setInterval(async () => {
-      console.log("Updating coin list...");
-      await coinManager.updateCoins();
-      coinManager.printCoins();
-  }, 60000); // 1분마다 업데이트
+    console.log("Updating coin list every 1min ...");
+    await coinManager.updateCoins();
+  }, 60000);
+
+  // coins가 배열인지 확인
+  if (!Array.isArray(coinManager.coins) || coinManager.coins.length === 0) {
+    console.error("CoinManager.coins is not initialized or empty.");
+    return;
+}
+
+  // WebSocketManager 초기화
+  const wsManager = new WebSocketManager();
+
+  // 메시지 타입별 이벤트 핸들러 등록
+  wsManager.addEventHandler("ticker", (data) => {
+      //console.log(`Ticker Update: ${data.code} - ${data.trade_price}`);
+  });
+
+  wsManager.addEventHandler("trade", (data) => {
+      // console.log(`Trade Update: ${data.code} - ${data.trade_price} @ ${data.trade_volume}`);
+  });
+
+  wsManager.addEventHandler("order", (data) => {
+    console.log("order");
+      // console.log(`Order Update: ${data.code} - ${data.order_type} ${data.price}`);
+  });
+
+  // Ticker 데이터 구독 추가
+  wsManager.addSubscription(
+      "ticker",
+      coinManager.coins.map((coin) => coin.market) // 모든 코인 구독
+  );
+
+  // Trade 데이터 구독 추가
+  wsManager.addSubscription(
+      "trade",
+      coinManager.coins.map((coin) => coin.market) // 모든 코인 구독
+  );
+
+  // Order 데이터 구독 추가
+  // wsManager.addSubscription(
+  //     "order",
+  //     coinManager.coins.map((coin) => coin.market) // 모든 코인 구독
+  // );
+
+  // WebSocket 연결 시작
+  wsManager.startConnection();
 })();

@@ -1,6 +1,7 @@
 //REST api 모듈
 const axios = require('axios');
 const config = require('../config/config');
+const { generateJWT } = require("./security");
 
 let dynamicDelay = config.baseDelay; // 기본 요청 간격(ms)
 
@@ -52,4 +53,29 @@ async function getAllMarkets() {
   }
 }
 
-module.exports = { getAllMarkets };
+async function getAccountInfo() {
+  const url = config.baseUrl + "/accounts";
+
+  // 헤더 설정
+  token = generateJWT();
+  const headers = {
+      Authorization: `Bearer ${token}`,
+  };
+
+  // API 요청
+  try {
+      const accounts = await fetchJSON(url, headers); // fetchJSON 함수 사용
+      if (accounts) {
+          // console.log("Account Information:", accounts);
+          return accounts;
+      } else {
+          console.error("Failed to fetch account information.");
+          return null;
+      }
+  } catch (error) {
+      console.error("Error fetching account information:", error.message);
+      throw error;
+  }
+}
+
+module.exports = { getAllMarkets, getAccountInfo };

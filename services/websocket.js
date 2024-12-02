@@ -1,105 +1,90 @@
-const fetchJSON = require('./upbitApi'); // 분리된 fetchJSON 모듈 불러오기
-const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
-const config = require('../config/config'); // config.js 파일에 딜레이 설정 포함
-const fs = require("fs");
+const WebSocket = require("ws");
 
-// Upbit API Keys
-let accessKey = "YOUR_ACCESS_KEY"; // Upbit에서 발급받은 Access Key
-let secretKey = "YOUR_SECRET_KEY"; // Upbit에서 발급받은 Secret Key
-
-let token;
-
-// info.txt에서 API 키 로드
-function loadAPIKeys() {
-    try {
-      const data = fs.readFileSync("info.txt", "utf-8");
-      const lines = data.split("\n");
-      const accessKeyLine = lines.find((line) => line.startsWith("access_key"));
-      const secretKeyLine = lines.find((line) => line.startsWith("secret_key"));
-  
-      if (!accessKeyLine || !secretKeyLine) {
-        throw new Error("access_key 또는 secret_key가 파일에 존재하지 않습니다.");
-      }
-  
-      accessKey = accessKeyLine.split(":")[1]?.trim();
-      secretKey = secretKeyLine.split(":")[1]?.trim();
-    
-      if (!accessKey || !secretKey) {
-        throw new Error("access_key 또는 secret_key가 올바르게 설정되지 않았습니다.");
-      }
-  
-      console.log("API 키가 성공적으로 로드되었습니다.");
-    } catch (err) {
-      console.error("API 키 파일을 읽는 중 오류가 발생했습니다:", err);
-      process.exit(1);
+class WebSocketManager {
+    constructor() {
+        this.ws = null;
+        this.subscriptions = []; // 현재 구독 중인 데이터
+        this.eventHandlers = {}; // 각 메시지 타입별 이벤트 핸들러
     }
-  }
 
-// JWT 토큰 생성 함수
-function generateJWT() {
-    const payload = {
-        access_key: accessKey,
-        nonce: uuidv4(), // 고유 식별 값
-    };
-    return jwt.sign(payload, secretKey);
-}
-
-// 초기화 함수
-function initialize() {
-    loadAPIKeys();
-    console.log("Initialization logic -> loadAPIKeys() done.");
-    // 초기화에 필요한 작업 수행
-}
-
-// 초기화 실행
-initialize();
-
-async function getAccountInfo() {
-    const url = config.baseUrl + "/accounts";
-
-    // 헤더 설정
-    token = generateJWT();
-    const headers = {
-        Authorization: `Bearer ${token}`,
-    };
-
-    // API 요청
-    try {
-        const accounts = await fetchJSON(url, headers); // fetchJSON 함수 사용
-        if (accounts) {
-            //console.log("Account Information:", accounts);
-            return accounts;
-        } else {
-            console.error("Failed to fetch account information.");
-            return null;
+    // WebSocket 연결 시작
+    startConnection() {
+        if (this.ws) {
+            console.warn("WebSocket already connected.");
+            return;
         }
-    } catch (error) {
-        console.error("Error fetching account information:", error.message);
-        throw error;
+
+        this.ws = new WebSocket("wss://api.upbit.com/websocket/v1");
+
+        this.ws.on("open", () => {
+            console.log("WebSocket connected.");
+            this.subscribeToMarkets(); // 초기 구독 설정
+        });
+
+        this.ws.on("message", (data) => {
+            const parsedData = JSON.parse(data);
+            const eventType = parsedData.type || "unknown";
+
+            // 메시지 타입에 따른 이벤트 처리
+            if (this.eventHandlers[eventType]) {
+                this.eventHandlers[eventType](parsedData);
+            } else {
+                console.warn(`Unhandled WebSocket message type: ${eventType}`);
+            }
+        });
+
+        this.ws.on("error", (error) => {
+            console.error("WebSocket error:", error.message);
+        });
+
+        this.ws.on("close", () => {
+            console.log("WebSocket closed. Reconnecting...");
+            this.ws = null;
+            setTimeout(() => this.startConnection(), 3000);
+        });
+    }
+
+    // 구독 요청 설정
+    subscribeToMarkets() {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            console.error("WebSocket is not ready.");
+            return;
+        }
+
+        // 구독 요청 데이터 생성
+        const subscriptionRequest = JSON.stringify([
+            { ticket: "price-monitor" },
+            ...this.subscriptions,
+        ]);
+
+        this.ws.send(subscriptionRequest);
+        console.log("Subscribed to markets:", this.subscriptions);
+    }
+
+    // 구독 항목 추가
+    addSubscription(type, codes) {
+        if (!Array.isArray(codes)) {
+            codes = [codes];
+        }
+
+        this.subscriptions.push({ type, codes });
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.subscribeToMarkets(); // 새 구독 요청
+        }
+    }
+
+    // 이벤트 핸들러 추가
+    addEventHandler(type, handler) {
+        this.eventHandlers[type] = handler;
+    }
+
+    // WebSocket 연결 종료
+    closeConnection() {
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
     }
 }
 
-function monitorCoinPrices(onPriceUpdate) {
-    const ws = new WebSocket("wss://api.upbit.com/websocket/v1");
-
-    ws.on("open", () => {
-        console.log("WebSocket connected.");
-        ws.send(JSON.stringify([
-            { ticket: "unique-ticket-id" },
-            { type: "ticker", codes: ["KRW-BTC", "KRW-ETH"] },
-        ]));
-    });
-
-    ws.on("message", (data) => {
-        const parsed = JSON.parse(data);
-        onPriceUpdate(parsed);
-    });
-
-    ws.on("close", () => console.log("WebSocket closed."));
-    ws.on("error", (err) => console.error("WebSocket error:", err.message));
-}
-
-module.exports = {
-    getAccountInfo
-};
+module.exports = WebSocketManager;
