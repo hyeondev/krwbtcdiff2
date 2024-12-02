@@ -1,5 +1,5 @@
 const axios = require('axios');
-const config = require('../config');
+const config = require('../config/config');
 
 let dynamicDelay = config.baseDelay; // 기본 요청 간격(ms)
 

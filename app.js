@@ -3,7 +3,7 @@ const { Server } = require("socket.io");
 const http = require("http");
 const { getAccountInfo } = require("./services/exchangeApi");
 //const { monitorCoinPrice } = require("./services/websocket");
-const config = require('./config');
+const config = require('./config/config');
 
 const app = express();
 const server = http.createServer(app);
