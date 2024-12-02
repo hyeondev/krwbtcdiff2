@@ -1,4 +1,4 @@
-const fetchJSON = require('./fetchJSON'); // 분리된 fetchJSON 모듈 불러오기
+const fetchJSON = require('./upbitApi'); // 분리된 fetchJSON 모듈 불러오기
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../config/config'); // config.js 파일에 딜레이 설정 포함

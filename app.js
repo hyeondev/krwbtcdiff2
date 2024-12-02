@@ -2,6 +2,7 @@ const express = require("express");
 const { Server } = require("socket.io");
 const http = require("http");
 const { getAccountInfo } = require("./services/exchangeApi");
+const upbitApi = require("./services/upbitApi");
 //const { monitorCoinPrice } = require("./services/websocket");
 const config = require('./config/config');
 
@@ -46,11 +47,11 @@ io.on("connection", (socket) => {
   });
 });
 
+server.on("error", (err) => {
+  console.log(err);
+});
+
 // 서버 실행
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-});
-
-server.on("error", (err) => {
-  console.log(err);
 });
