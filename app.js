@@ -6,7 +6,7 @@ const WebSocketManager = require("./services/websocket");
 const { getAccountInfo } = require("./services/upbitApi");
 const config = require('./config/config');
 
-const { placeBuyOrder, placeSellOrder, checkOrderStatus } = require("./services/upbitApi");
+const { placeBuyOrder, placeSellOrder, checkOrderStatus, placeCancelOrder } = require("./services/upbitApi");
 
 const app = express();
 const server = http.createServer(app);
@@ -134,37 +134,31 @@ server.listen(PORT, () => {
       coinManager.coins.map((coin) => `${coin.market}.1`) // 모든 코인 구독
   );
 
+  //KRW BTC 시세 차익 거래 
   setInterval(() => {
-    const priceDifferences = coinManager.checkPriceDifferencesForAllCoins();
+    coinManager.checkPriceDifferencesForAllCoins();
     console.log("가격 차이 계산 완료.");
-    priceDifferences.forEach((result) => {
-        // console.log(
-        //     `[${result.coin}] BTC 마켓 매도 최저가: ${result.btcBestAskPrice} BTC, ` +
-        //     `KRW 마켓 매수 최고가: ${result.krwBestBidPrice} KRW, 차이: ${result.diff1}%`
-        // );
-        // console.log(
-        //     `[${result.coin}] KRW 마켓 매도 최저가: ${result.krwBestAskPrice} KRW, ` +
-        //     `BTC 마켓 매수 최고가: ${result.btcBestBidPrice} BTC, 차이: ${result.diff2}%`
-        // );
-    });
 }, 2000);
 
   // WebSocket 연결 시작
   wsManager.startConnection();
 
   const market = "KRW-XLM";
-  const price = 773; // 1 BTC당 30,000,000 KRW
-  const total_price = 10000; // 300,000 KRW로 매수
+  const price = 456; // 1 BTC당 30,000,000 KRW
+  const total_price = 100; // 300,000 KRW로 매수
   const sell_price = 790; // 매도 가격
 
   try {
       console.log(`[매수 시도] ${market}: ${total_price} KRW로 매수.`);
       const buyResult = await placeBuyOrder(market, price, total_price);
       console.log(`[매수 성공] 주문 UUID: ${buyResult.uuid}`);
+      const cancelResult = await placeCancelOrder(buyResult.uuid);
+      console.log(`[Cancel 성공] 주문 UUID: ${cancelResult}`);
+      
 
-      console.log(`[매도 시도] ${market}: ${total_price} KRW 상당을 매도.`);
-      const sellResult = await placeSellOrder(market, sell_price, total_price);
-      console.log(`[매도 성공] 주문 UUID: ${sellResult.uuid}`);
+      // console.log(`[매도 시도] ${market}: ${total_price} KRW 상당을 매도.`);
+      // const sellResult = await placeSellOrder(market, sell_price, total_price);
+      // console.log(`[매도 성공] 주문 UUID: ${sellResult.uuid}`);
   } catch (error) {
       console.error(`[테스트 실패] ${error.message}`);
   }

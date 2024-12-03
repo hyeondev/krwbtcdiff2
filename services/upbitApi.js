@@ -1,6 +1,8 @@
 //REST api 모듈
 const axios = require('axios');
+const request = require('request');
 const config = require('../config/config');
+const queryEncode = require("querystring").encode
 const { generateJWT, generateOrderJWT } = require("./security");
 
 let dynamicDelay = config.baseDelay; // 기본 요청 간격(ms)
@@ -79,9 +81,9 @@ async function getAccountInfo() {
 }
 
 // 매수 API
-async function placeBuyOrder(market, price, total_price) {
+async function placeBuyOrder(market, price, volume) {
   const url = config.baseUrl + "/orders";
-  const volume = total_price / price;
+  // const volume = total_price / price;
   try {
       //await delay(dynamicDelay); // 요청 간 딜레이 적용
       const body = {
@@ -110,9 +112,9 @@ async function placeBuyOrder(market, price, total_price) {
 }
 
 // 매도 API
-async function placeSellOrder(market, price, total_price) {
+async function placeSellOrder(market, price, volume) {
   const url = config.baseUrl + "/orders";
-  const volume = total_price / price;
+  // const volume = total_price / price;
 
   try {
       // await delay(100); // 요청 간격을 지키기 위해 딜레이 추가
@@ -140,6 +142,32 @@ async function placeSellOrder(market, price, total_price) {
   }
 }
 
+// 주문 취소 
+async function placeCancelOrder(uuid) {
+  const body = {
+    uuid: uuid
+  };
+  const query = queryEncode(body);
+  const url = config.baseUrl + "/order?" + query;
+
+  try {
+      const token = generateOrderJWT(body);
+      const options = {
+        method: "DELETE",
+        url: url,
+        headers: {Authorization: `Bearer ${token}`},
+        json: body
+    }
+    request(options, (error, response, body) => {
+      if (error) throw new Error(error)
+        console.log(body)
+    });
+  } catch (error) {
+      console.error(`[취소 실패] ${error.response?.data?.error || error.message}`);
+      throw error;
+  }
+}
+
 // 주문 상태 확인 API
 async function checkOrderStatus(uuid) {
   const url =  config.baseUrl + `/order?uuid=${uuid}`;
@@ -157,4 +185,4 @@ async function checkOrderStatus(uuid) {
 }
 
 
-module.exports = { getAllMarkets, getAccountInfo, placeBuyOrder, placeSellOrder, checkOrderStatus };
+module.exports = { getAllMarkets, getAccountInfo, placeBuyOrder, placeSellOrder, checkOrderStatus, placeCancelOrder };

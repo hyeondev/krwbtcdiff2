@@ -1,11 +1,15 @@
 const { getAllMarkets } = require("./upbitApi");
 const CoinInfo = require("./CoinInfo");
+const config = require('../config/config');
 
 class CoinManager {
     constructor() {
         this.coins = []; // CoinInfo 객체 배열
         this.btcPriceInKRW = 0; // BTC의 원화 가격 저장 (KRW-BTC)
-        this.activeTrades = new Map(); // 진행 중인 거래 관리 (최대 6개)
+        this.activeTrades = new Map(); // 진행 중인 거래 관리
+        this.maxConcurrentTrades = config.maxConcurrentTrades; // 최대 동시 거래 수
+        this.checkInterval = null; // 상태 체크 Interval
+        this.maxTradeAmount = config.maxTradeAmount;
     }
 
     // 초기화: 업비트 API에서 코인 목록 가져오기
@@ -126,7 +130,9 @@ class CoinManager {
             const krwBestAskPrice = krwMarket.orderbook?.orderbook_units[0]?.ask_price || 0; // 원화 마켓 매도 최저가
             const btcBestBidPrice = btcMarket.orderbook?.orderbook_units[0]?.bid_price || 0; // BTC 마켓 매수 최고가
             const btcBestAskPrice = btcMarket.orderbook?.orderbook_units[0]?.ask_price || 0; // BTC 마켓 매도 최저가
-
+            const askSize = btcMarket.orderbook?.orderbook_units[0]?.ask_size || 0;
+            const bidSize = krwMarket.orderbook?.orderbook_units[0]?.bid_size || 0;
+    
             if (krwBestBidPrice === 0 || krwBestAskPrice === 0 || btcBestBidPrice === 0 || btcBestAskPrice === 0) {
                 console.warn(`[데이터 부족] ${symbol}: 가격 데이터가 불완전합니다.`);
                 return; // 데이터가 없으면 계산 스킵
@@ -135,7 +141,7 @@ class CoinManager {
             // 100원 미만 코인 스킵
             if (krwBestBidPrice < 100 && krwBestAskPrice < 100) {
                 //console.warn(`[거래 무시] ${symbol}: 가격이 100원 미만입니다.`);
-                return;
+                //return;
             }
     
             const btcToKrwBestAskPrice = btcBestAskPrice * this.btcPriceInKRW; // BTC 마켓 매도 최저가의 원화 환산 가격
@@ -143,35 +149,29 @@ class CoinManager {
     
             // 비트의 매도 최저가와 원화의 매수 최고가 비교
             const diff1 = ((krwBestBidPrice - btcToKrwBestAskPrice) / btcToKrwBestAskPrice) * 100;
-    
             // 원화의 매도 최저가와 비트의 매수 최고가 비교
             const diff2 = ((btcToKrwBestBidPrice - krwBestAskPrice) / krwBestAskPrice) * 100;
+            // 거래 금액 계산
+            const buyAmount1 = Math.min(this.maxTradeAmount, btcBestAskPrice * askSize); // BTC 마켓 매수
+            const sellAmount1 = Math.min(this.maxTradeAmount, krwBestBidPrice * bidSize); // KRW 마켓 매도
+            const buyAmount2 = Math.min(this.maxTradeAmount, krwBestAskPrice * bidSize); // KRW 마켓 매수
+            const sellAmount2 = Math.min(this.maxTradeAmount, btcBestBidPrice * askSize); // BTC 마켓 매도
+
     
             results.push({
                 coin: symbol,
-                krwBestBidPrice,
-                krwBestAskPrice,
-                btcBestBidPrice,
-                btcBestAskPrice,
+                krwBestBidPrice: krwBestBidPrice,
+                krwBestAskPrice: krwBestAskPrice,
+                btcBestBidPrice: btcBestBidPrice,
+                btcBestAskPrice: btcBestAskPrice,
                 btcToKrwBestAskPrice: btcToKrwBestAskPrice.toFixed(2),
                 btcToKrwBestBidPrice: btcToKrwBestBidPrice.toFixed(2),
                 diff1: diff1.toFixed(2),
                 diff2: diff2.toFixed(2),
+                tradeAmount1: Math.min(buyAmount1, sellAmount1),
+                tradeAmount2: Math.min(buyAmount2, sellAmount2),
                 maxDiff: Math.max(diff1, diff2), // diff1과 diff2 중 최대값 저장
             });
-    
-            // 차이 1% 이상인 경우 로그
-            // if (diff1 > 0.1) {
-            //     console.log(
-            //         `[매수/매도 제안] ${symbol}: BTC 마켓에서 ${btcBestAskPrice} BTC로 구매(${btcToKrwBestAskPrice}), KRW 마켓에서 ${krwBestBidPrice} KRW로 판매 (차이: ${diff1.toFixed(2)}%) ${btcMarket.trade.trade_time}`
-            //     );
-            // }
-    
-            // if (diff2 > 0.1) {
-            //     console.log(
-            //         `[매수/매도 제안] ${symbol}: KRW 마켓에서 ${krwBestAskPrice} KRW로 구매, BTC 마켓에서 ${btcBestBidPrice} BTC로 판매(${btcToKrwBestBidPrice}) (차이: ${diff2.toFixed(2)}%)`
-            //     );
-            // }
         });
 
         // 결과를 diff1과 diff2의 최대값 기준으로 내림차순 정렬
@@ -180,46 +180,137 @@ class CoinManager {
         const topResults = results.slice(0, 3);
         // 상위 3개에 대해 로그 출력
         topResults.forEach((result) => {
-            const { coin, diff1, diff2, krwBestBidPrice, krwBestAskPrice, btcBestBidPrice, btcBestAskPrice, btcToKrwBestAskPrice, btcToKrwBestBidPrice } = result;
-            if (diff1 > 0.25) {
+            const { coin, diff1, diff2, krwBestBidPrice, krwBestAskPrice, btcBestBidPrice, btcBestAskPrice, btcToKrwBestAskPrice, btcToKrwBestBidPrice, tradeAmount1, tradeAmount2 } = result;
+            if (diff1 > 0.01) {
                 console.log(
-                    `[매수/매도 제안] ${coin}: BTC 마켓에서 ${btcBestAskPrice} BTC로 구매(${btcToKrwBestAskPrice} KRW), KRW 마켓에서 ${krwBestBidPrice} KRW로 판매 (차이: ${diff1}%)`
+                    `[거래 조건 발견] ${coin}: BTC 마켓에서 ${btcBestAskPrice} BTC로 구매(${btcToKrwBestAskPrice} KRW), KRW 마켓에서 ${krwBestBidPrice} KRW로 판매 (차이: ${diff1}%) 거래금액: ${tradeAmount1}`
                 );
+                // this.addTrade(coin, {
+                //     buyMarket: btcMarket.market,
+                //     buyPrice: btcBestAskPrice,
+                //     sellMarket: krwMarket.market,
+                //     sellPrice: krwBestBidPrice,
+                //     tradeAmount,
+                //     status: "ready",
+                // });
             }
-            if (diff2 > 0.25) {
+            if (diff2 > 0.01) {
                 console.log(
-                    `[매수/매도 제안] ${coin}: KRW 마켓에서 ${krwBestAskPrice} KRW로 구매, BTC 마켓에서 ${btcBestBidPrice} BTC로 판매(${btcToKrwBestBidPrice} KRW) (차이: ${diff2}%)`
+                    `[거래 조견 발견] ${coin}: KRW 마켓에서 ${krwBestAskPrice} KRW로 구매, BTC 마켓에서 ${btcBestBidPrice} BTC로 판매(${btcToKrwBestBidPrice} KRW) (차이: ${diff2}% 거래금액: ${tradeAmount2})`
                 );
+                // this.addTrade(coin, {
+                //     buyMarket: krwMarket.market,
+                //     buyPrice: krwBestAskPrice,
+                //     sellMarket: btcMarket.market,
+                //     sellPrice: btcBestBidPrice,
+                //     tradeAmount,
+                //     status: "ready",
+                // });
             }
     });
 
         return topResults;
     }
 
-    // 매수 로직
-    async handleBuy(symbol, market, price, totalPrice) {
-        if (this.activeTrades.size >= 6) {
-            console.warn(`[거래 제한] 최대 6개의 거래가 진행 중입니다. ${symbol} 매수를 스킵합니다.`);
+    // 거래 추가 및 즉시 처리
+    addTrade(symbol, trade) {
+        if (this.activeTrades.size >= this.maxConcurrentTrades) {
+            console.warn(`[거래 제한] 최대 ${this.maxConcurrentTrades}개의 거래가 진행 중입니다. ${symbol} 거래를 건너뜁니다.`);
             return;
         }
 
-        try {
-            console.log(`[매수 진행] ${symbol}: ${market}에서 ${totalPrice} KRW로 매수 시도.`);
-            const buyResult = await placeBuyOrder(market, price, totalPrice);
+        if (this.activeTrades.has(symbol)) {
+            console.warn(`[중복 거래] ${symbol}: 동일한 코인에 대한 거래가 이미 진행 중입니다.`);
+            return;
+        }
 
-            if (buyResult && buyResult.state === "done") {
-                console.log(`[매수 완료] ${symbol}: ${market}에서 ${totalPrice} KRW로 매수 완료.`);
-                this.activeTrades.set(symbol, {
-                    market,
-                    buyPrice: price,
-                    totalPrice,
-                    volume: totalPrice / price,
-                    buyResult,
-                });
-                this.handleSellAfterBuy(symbol); // 매수 후 매도 로직 처리
+        console.log(`[거래 추가] ${symbol}:`, trade);
+        this.activeTrades.set(symbol, trade);
+
+        // 거래 즉시 처리
+        this.processTrade(symbol);
+    }
+
+    // 거래 상태 주기적으로 체크
+    startTradeManagement() {
+        if (this.checkInterval) return; // 이미 Interval이 설정된 경우 중복 실행 방지
+
+        this.checkInterval = setInterval(() => {
+            for (const [symbol, trade] of this.activeTrades) {
+                if (trade.status === "ready" || trade.status === "bought") {
+                    console.log(`[상태 체크] ${symbol}: 상태 - ${trade.status}`);
+                    this.processTrade(symbol); // 상태별 처리
+                }
+            }
+        }, 5000); // 1초 간격
+    }
+
+    // 거래 처리 로직
+    async processTrade(symbol) {
+        const trade = this.activeTrades.get(symbol);
+        if (!trade) return;
+
+        try {
+            if (trade.status === "ready") {
+                console.log(`[매수 시도] ${symbol}: ${trade.buyMarket}에서 ${trade.buyPrice}로 ${trade.tradeAmount} 매수.`);
+                const buyResult = await placeBuyOrder(trade.buyMarket, trade.buyPrice, trade.tradeAmount);
+
+                if (buyResult && buyResult.state === "done") {
+                    console.log(`[매수 성공] ${symbol}: ${trade.buyMarket}에서 ${buyResult.executed_volume}개 매수.`);
+                    trade.status = "bought";
+                    trade.executedVolume = parseFloat(buyResult.executed_volume);
+
+                    // 매수 성공 후 매도 진행
+                    this.processTrade(symbol);
+                } else {
+                    console.warn(`[매수 실패] ${symbol}: 주문 취소 진행.`);
+                    await this.cancelOrder(buyResult.uuid);
+                    this.activeTrades.delete(symbol); // 실패 시 거래 삭제
+                }
+            } else if (trade.status === "bought") {
+                console.log(`[매도 시도] ${symbol}: ${trade.sellMarket}에서 매도 진행.`);
+                const sellResult = await placeSellOrder(
+                    trade.sellMarket,
+                    trade.sellPrice,
+                    trade.executedVolume
+                );
+
+                if (sellResult && sellResult.state === "done") {
+                    console.log(`[매도 성공] ${symbol}: ${trade.sellMarket}에서 매도 완료.`);
+                    this.activeTrades.delete(symbol); // 성공 시 거래 삭제
+                } else {
+                    console.warn(`[매도 실패] ${symbol}: 손절 체크 진행.`);
+                    const currentAskPrice = this.getOrderbookAskPrice(trade.sellMarket);
+
+                    if (currentAskPrice < trade.sellPrice * 0.99) {
+                        console.log(`[손절 진행] ${symbol}: ${currentAskPrice}로 매도.`);
+                        await placeSellOrder(trade.sellMarket, currentAskPrice, trade.executedVolume);
+                        this.activeTrades.delete(symbol); // 손절 후 거래 삭제
+                    } else {
+                        //태손절하지 않고 매도 대기 상태
+                    }
+                }
             }
         } catch (error) {
-            console.error(`[매수 실패] ${symbol}: ${error.message}`);
+            console.error(`[거래 처리 오류] ${symbol}: ${error.message}`);
+            this.activeTrades.delete(symbol);
+        }
+    }
+
+    // 특정 마켓의 매도 호가 가져오기
+    getOrderbookAskPrice(market) {
+        const coin = this.coins.find((c) => c.market === market);
+        return coin?.orderbook?.orderbook_units[0]?.ask_price || 0;
+    }
+
+    // 주문 취소 함수
+    async cancelOrder(uuid) {
+        try {
+            console.log(`[주문 취소] 주문 ID: ${uuid}`);
+            await cancelOrder(uuid);
+            console.log(`[주문 취소 완료] 주문 ID: ${uuid}`);
+        } catch (error) {
+            console.error(`[주문 취소 실패] 주문 ID: ${uuid}, 오류: ${error.message}`);
         }
     }
 }
