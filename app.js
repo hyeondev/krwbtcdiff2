@@ -6,6 +6,8 @@ const WebSocketManager = require("./services/websocket");
 const { getAccountInfo } = require("./services/upbitApi");
 const config = require('./config/config');
 
+const { placeBuyOrder, placeSellOrder, checkOrderStatus } = require("./services/upbitApi");
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
@@ -36,7 +38,7 @@ io.on("connection", (socket) => {
       const market = `KRW-${asset.currency}`; // 업비트 마켓 코드
       const currentPrice = tickerPrices[market] || 0; // 현재가 가져오기
       const evaluation = asset.balance * currentPrice; // 평가 금액 계산
-      //console.log(market + ' : ' + evaluation + 'currentPrice: ' + currentPrice);
+      console.log(market + ' : ' + evaluation + 'currentPrice: ' + currentPrice);
       return {
         ...asset,
         currentPrice,
@@ -149,4 +151,21 @@ server.listen(PORT, () => {
 
   // WebSocket 연결 시작
   wsManager.startConnection();
+
+  const market = "KRW-XLM";
+  const price = 773; // 1 BTC당 30,000,000 KRW
+  const total_price = 10000; // 300,000 KRW로 매수
+  const sell_price = 790; // 매도 가격
+
+  try {
+      console.log(`[매수 시도] ${market}: ${total_price} KRW로 매수.`);
+      const buyResult = await placeBuyOrder(market, price, total_price);
+      console.log(`[매수 성공] 주문 UUID: ${buyResult.uuid}`);
+
+      console.log(`[매도 시도] ${market}: ${total_price} KRW 상당을 매도.`);
+      const sellResult = await placeSellOrder(market, sell_price, total_price);
+      console.log(`[매도 성공] 주문 UUID: ${sellResult.uuid}`);
+  } catch (error) {
+      console.error(`[테스트 실패] ${error.message}`);
+  }
 })();

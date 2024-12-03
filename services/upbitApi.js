@@ -1,7 +1,7 @@
 //REST api 모듈
 const axios = require('axios');
 const config = require('../config/config');
-const { generateJWT } = require("./security");
+const { generateJWT, generateOrderJWT } = require("./security");
 
 let dynamicDelay = config.baseDelay; // 기본 요청 간격(ms)
 
@@ -78,4 +78,83 @@ async function getAccountInfo() {
   }
 }
 
-module.exports = { getAllMarkets, getAccountInfo };
+// 매수 API
+async function placeBuyOrder(market, price, total_price) {
+  const url = config.baseUrl + "/orders";
+  const volume = total_price / price;
+  try {
+      //await delay(dynamicDelay); // 요청 간 딜레이 적용
+      const body = {
+        market: market, 
+        side: "bid",
+        volume: volume,
+        price: price,
+        ord_type: "limit", // 지정가 주문
+      };
+      const token = generateOrderJWT(body);
+      const response = await axios.post(
+          url,
+          body,
+          {
+              headers: {
+                  Authorization: `Bearer ${token}`,
+              },
+          }
+      );
+      return response.data; // 주문 결과 반환
+  } catch (error) {
+      console.error(`Failed to fetch ${url}:`, error.message);
+      console.error(`[매수 실패] ${error.response?.data?.error || error.message}`);
+      throw error;
+  }
+}
+
+// 매도 API
+async function placeSellOrder(market, price, total_price) {
+  const url = config.baseUrl + "/orders";
+  const volume = total_price / price;
+
+  try {
+      // await delay(100); // 요청 간격을 지키기 위해 딜레이 추가
+      const body = {
+        market: market, 
+        side: "ask",
+        volume: volume,
+        price: price,
+        ord_type: "limit", // 지정가 주문
+      };
+      const token = generateOrderJWT(body);
+      const response = await axios.post(
+          url,
+          body,
+          {
+              headers: {
+                  Authorization: `Bearer ${token}`,
+              },
+          }
+      );
+      return response.data; // 주문 결과 반환
+  } catch (error) {
+      console.error(`[매도 실패] ${error.response?.data?.error || error.message}`);
+      throw error;
+  }
+}
+
+// 주문 상태 확인 API
+async function checkOrderStatus(uuid) {
+  const url =  config.baseUrl + `/order?uuid=${uuid}`;
+  const token = generateJWT();
+
+  try {
+      const response = await fetchJSON(url, {
+          Authorization: `Bearer ${token}`,
+      });
+      return response; // 주문 상태 반환
+  } catch (error) {
+      console.error(`[주문 상태 확인 실패] ${error.response?.data?.error || error.message}`);
+      throw error;
+  }
+}
+
+
+module.exports = { getAllMarkets, getAccountInfo, placeBuyOrder, placeSellOrder, checkOrderStatus };

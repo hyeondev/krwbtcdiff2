@@ -3,6 +3,8 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../config/config'); // config.js 파일에 딜레이 설정 포함
 const fs = require("fs");
+const crypto = require('crypto');
+const queryEncode = require("querystring").encode
 
 // Upbit API Keys
 let accessKey = "YOUR_ACCESS_KEY"; // Upbit에서 발급받은 Access Key
@@ -45,6 +47,21 @@ function generateJWT() {
     return jwt.sign(payload, secretKey);
 }
 
+// JWT 토큰 생성 함수
+function generateOrderJWT(body) {
+  const query = queryEncode(body)
+  const hash = crypto.createHash('sha512')
+  const queryHash = hash.update(query, 'utf-8').digest('hex')
+
+  const payload = {
+      access_key: accessKey,
+      nonce: uuidv4(), // 고유 식별 값
+      query_hash: queryHash,
+      query_hash_alg: "SHA512",
+  };
+  return jwt.sign(payload, secretKey);
+}
+
 // 초기화 함수
 function initialize() {
     loadAPIKeys();
@@ -56,5 +73,6 @@ function initialize() {
 initialize();
 
 module.exports = {
-    generateJWT
+    generateJWT, generateOrderJWT
+
 };
