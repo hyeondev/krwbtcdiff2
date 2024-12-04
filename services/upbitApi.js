@@ -105,8 +105,7 @@ async function placeBuyOrder(market, price, volume) {
       );
       return response.data; // 주문 결과 반환
   } catch (error) {
-      console.error(`Failed to fetch ${url}:`, error.message);
-      console.error(`[매수 실패] ${error.response?.data?.error || error.message}`);
+      console.error(`[매수 실패 in placeBuyOrder] ${error.message} ${error.name}`);
       throw error;
   }
 }
@@ -142,29 +141,30 @@ async function placeSellOrder(market, price, volume) {
   }
 }
 
-// 주문 취소 
+// 주문 취소
 async function placeCancelOrder(uuid) {
-  const body = {
-    uuid: uuid
-  };
-  const query = queryEncode(body);
-  const url = config.baseUrl + "/order?" + query;
+  const body = { uuid: uuid }; // 요청 데이터
+  const query = queryEncode(body); // 쿼리 문자열 생성
+  const url = `${config.baseUrl}/order?${query}`; // API URL 생성
 
   try {
-      const token = generateOrderJWT(body);
-      const options = {
-        method: "DELETE",
-        url: url,
-        headers: {Authorization: `Bearer ${token}`},
-        json: body
-    }
-    request(options, (error, response, body) => {
-      if (error) throw new Error(error)
-        console.log(body)
-    });
+    // JWT 토큰 생성
+    const token = generateOrderJWT(body);
+
+    // axios 요청 옵션
+    const options = {
+      method: "DELETE",
+      url: url,
+      headers: { Authorization: `Bearer ${token}` },
+      data: body, // DELETE 메서드에서 데이터 전송
+    };
+
+    // axios 요청
+    const response = await axios(options);
+    return response.data;
   } catch (error) {
-      console.error(`[취소 실패] ${error.response?.data?.error || error.message}`);
-      throw error;
+    console.error(`[취소 실패] ${error.response?.data?.error || error.message}`);
+    throw error; // 에러 다시 던지기
   }
 }
 
