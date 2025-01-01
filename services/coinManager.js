@@ -189,7 +189,7 @@ class CoinManager {
         filtered.sort((a, b) => b.maxDiff - a.maxDiff);
 
         // 상위 3개
-        const top3 = filtered.slice(0, 10);
+        const top3 = filtered.slice(0, 3);
 
         // 로그 및 거래 추가
         top3.forEach((r) => {
