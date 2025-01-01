@@ -99,6 +99,16 @@ class CoinManager {
         }
     }
 
+    // MyOrder 업데이트
+    updateMyOrder(market, myOrderData) {
+        console.log(myOrderData);
+    }
+
+    // MyAsset 업데이트
+    updateMyAsset(market, myAssetData) {
+        console.log(myAssetData);
+    }
+
     checkPriceDifferencesForAllCoins() {
         const results = [];
         const btcMarkets = this.coins.filter((coin) => coin.market.startsWith("BTC-")); // BTC 마켓만 필터링
@@ -161,61 +171,54 @@ class CoinManager {
             });
         });
 
-        // 결과를 diff1과 diff2의 최대값 기준으로 내림차순 정렬
-        results.sort((a, b) => b.maxDiff - a.maxDiff);
-        // 상위 3개만 유지
-        const topResults = results.slice(0, 1);
-        // 상위 3개에 대해 로그 출력
-        topResults.forEach((result) => {
-            const { coin, btcMarket, krwMarket, diff1, diff2, krwBestBidPrice, krwBestAskPrice, btcBestBidPrice, btcBestAskPrice, btcToKrwBestAskPrice, btcToKrwBestBidPrice, btcAskSize, btcBidSize, krwBidSize, krwAskSize } = result;
-            
-            // **1. 거래량 계산 로직 추가**
-            const tradeAmount1 = this.calculateTradeAmount(
-                btcAskSize,
-                krwBidSize,
-                krwBestBidPrice
-            ); // BTC 마켓 매도 -> KRW 마켓 매수
-            const tradeAmount2 = this.calculateTradeAmount(
-                btcBidSize,
-                krwAskSize,
-                krwBestAskPrice
-            ); // BTC 마켓 매수 -> KRW 마켓 매도
-            
-            if (diff1 > config.krwbitDiff) {
-                // 너무 작은 금애
-                if (tradeAmount1 * krwBestBidPrice < config.minTradeMoney)
-                    return;
+        // 거래량 계산
+        results.forEach((r) => {
+            r.tradeAmount1 = this.calculateTradeAmount(r.btcAskSize, r.krwBidSize, r.krwBestBidPrice);
+            r.tradeAmount2 = this.calculateTradeAmount(r.btcBidSize, r.krwAskSize, r.krwBestAskPrice);
+        });
 
-                console.log(
-                    `[거래 조건 발견] ${coin}: BTC 마켓에서 ${btcBestAskPrice} BTC로 구매(${btcToKrwBestAskPrice} KRW), KRW 마켓에서 ${krwBestBidPrice} KRW로 판매 (차이: ${diff1}%)`
-                );
-                this.addTrade(coin, {
-                    buyMarket: btcMarket,
-                    buyPrice: btcBestAskPrice,
-                    sellMarket: krwMarket,
-                    sellPrice: krwBestBidPrice,
-                    tradeAmount: tradeAmount1,
+        // 조건에 맞는 결과만 필터링
+        const filtered = results.filter((r) => {
+            const c1 = (r.diff1 > config.krwbitDiff) && (r.tradeAmount1 * r.krwBestBidPrice >= config.minTradeMoney);
+            const c2 = (r.diff2 > config.krwbitDiff) && (r.tradeAmount2 * r.krwBestAskPrice >= config.minTradeMoney);
+            return c1 || c2;
+        });
+
+        // 정렬
+        filtered.forEach((r) => { r.maxDiff = Math.max(r.diff1, r.diff2); });
+        filtered.sort((a, b) => b.maxDiff - a.maxDiff);
+
+        // 상위 3개
+        const top3 = filtered.slice(0, 10);
+
+        // 로그 및 거래 추가
+        top3.forEach((r) => {
+            if (r.diff1 > config.krwbitDiff && r.tradeAmount1 * r.krwBestBidPrice >= config.minTradeMoney) {
+                console.log(`[거래 조건 발견] ${r.coin}: BTC마켓 ${r.btcBestAskPrice} BTC 구매(${r.btcToKrwBestAskPrice} KRW) -> KRW마켓 ${r.krwBestBidPrice} KRW 판매 (차이:${r.diff1}%)`);
+                this.addTrade(r.coin, {
+                    buyMarket: r.btcMarket,
+                    buyPrice: r.btcBestAskPrice,
+                    sellMarket: r.krwMarket,
+                    sellPrice: r.krwBestBidPrice,
+                    tradeAmount: r.tradeAmount1,
                     status: "ready",
                 });
             }
-            if (diff2 > config.krwbitDiff) {
-                if (tradeAmount2 * krwBestAskPrice < config.minTradeMoney)
-                    return;
 
-                console.log(
-                    `[거래 조견 발견] ${coin}: KRW 마켓에서 ${krwBestAskPrice} KRW로 구매, BTC 마켓에서 ${btcBestBidPrice} BTC로 판매(${btcToKrwBestBidPrice} KRW) (차이: ${diff2}%`
-                );
-                this.addTrade(coin, {
-                    buyMarket: krwMarket,
-                    buyPrice: krwBestAskPrice,
-                    sellMarket: btcMarket,
-                    sellPrice: btcBestBidPrice,
-                    tradeAmount: tradeAmount2,
+            if (r.diff2 > config.krwbitDiff && r.tradeAmount2 * r.krwBestAskPrice >= config.minTradeMoney) {
+                console.log(`[거래 조건 발견] ${r.coin}: KRW마켓 ${r.krwBestAskPrice} KRW 구매 -> BTC마켓 ${r.btcBestBidPrice} BTC 판매(${r.btcToKrwBestBidPrice} KRW) (차이:${r.diff2}%)`);
+                this.addTrade(r.coin, {
+                    buyMarket: r.krwMarket,
+                    buyPrice: r.krwBestAskPrice,
+                    sellMarket: r.btcMarket,
+                    sellPrice: r.btcBestBidPrice,
+                    tradeAmount: r.tradeAmount2,
                     status: "ready",
                 });
             }
         });
-        return topResults;
+
+        return top3;
     }
 
     calculateTradeAmount(btcSize, krwSize, krwPrice) {
@@ -252,7 +255,7 @@ class CoinManager {
         this.activeTrades.set(symbol, trade);
 
         // 거래 즉시 처리
-        this.processTrade(symbol);
+        //this.processTrade(symbol);
     }
 
     // 거래 상태 주기적으로 체크

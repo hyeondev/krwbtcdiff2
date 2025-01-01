@@ -105,6 +105,16 @@ server.listen(PORT, () => {
       // console.log(`Trade Update: ${data.code} - ${data.trade_price} @ ${data.trade_volume}`);
   });
 
+  wsManager.addEventHandler("MyOrder", (data) => {
+    coinManager.updateTrade(data.code, data);
+      // console.log(`Trade Update: ${data.code} - ${data.trade_price} @ ${data.trade_volume}`);
+  });
+
+  wsManager.addEventHandler("MyAsset", (data) => {
+    coinManager.updateTrade(data.code, data);
+      // console.log(`Trade Update: ${data.code} - ${data.trade_price} @ ${data.trade_volume}`);
+  });
+
   wsManager.addEventHandler("orderbook", (data) => {
     coinManager.updateOrderbook(data.code, data);
     // console.table(data.orderbook_units.map(unit => ({
@@ -133,6 +143,16 @@ server.listen(PORT, () => {
       "orderbook",
       coinManager.coins.map((coin) => `${coin.market}.1`) // 모든 코인 구독
   );
+
+  // Order 데이터 구독 추가
+  // wsManager.addSubscription(
+  //   "myAsset"
+  // );
+
+  // Order 데이터 구독 추가
+  // wsManager.addSubscription(
+  //   "myOrder"
+  // );
 
   //KRW BTC 시세 차익 거래 
   setInterval(() => {
